@@ -124,3 +124,52 @@ class TestAccountService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
     # ADD YOUR TEST CASES HERE ...
+    def test_get_account(self):
+        """It should Read a single Account"""
+        account = self._create_accounts(1)[0]
+        resp = self.client.get(
+            f"{BASE_URL}/{account.id}", content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.get_json()
+        self.assertEqual(data["name"], account.name)
+
+
+    def test_get_account_not_found(self):
+        """It should not Read an Account that is not found"""
+        resp = self.client.get(f"{BASE_URL}/0")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        
+    def test_internal_server_error(self):
+        """It should handle 500_INTERNAL_SERVER_ERROR"""
+        # Força o Flask a NÃO propagar exceções durante esse teste
+        old_propagate = app.config.get("PROPAGATE_EXCEPTIONS", None)
+        app.config["PROPAGATE_EXCEPTIONS"] = False
+
+        # Guarda o handler original e injeta um que levanta exceção
+        original_view = app.view_functions["health"]
+
+        def boom():
+            raise Exception("boom")
+
+        app.view_functions["health"] = boom
+
+        try:
+            resp = self.client.get("/health")
+            self.assertEqual(resp.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+            data = resp.get_json()
+            self.assertEqual(data["status"], status.HTTP_500_INTERNAL_SERVER_ERROR)
+        finally:
+            # Restaura tudo pra não contaminar os outros testes
+            app.view_functions["health"] = original_view
+            if old_propagate is None:
+                app.config.pop("PROPAGATE_EXCEPTIONS", None)
+            else:
+                app.config["PROPAGATE_EXCEPTIONS"] = old_propagate
+
+    def test_method_not_allowed(self):
+        """It should return 405_METHOD_NOT_ALLOWED"""
+        resp = self.client.post("/health")  # /health só aceita GET
+        self.assertEqual(resp.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        data = resp.get_json()
+        self.assertEqual(data["status"], status.HTTP_405_METHOD_NOT_ALLOWED)
